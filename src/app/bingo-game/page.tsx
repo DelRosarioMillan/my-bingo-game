@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,7 +20,7 @@ const NUMBER_RANGES = [
   [31, 45],
   [46, 60],
   [61, 75]
-]
+] as const
 
 type GameStats = {
   totalGames: number
@@ -32,6 +32,13 @@ type GameStats = {
   totalNumbersCalled: number
 }
 
+type BingoCell = {
+  number: number | 'FREE'
+  marked: boolean
+}
+
+type BingoBoard = BingoCell[][]
+
 const initialGameStats: GameStats = {
   totalGames: 0,
   wins: 0,
@@ -42,8 +49,8 @@ const initialGameStats: GameStats = {
   totalNumbersCalled: 0
 }
 
-const generateBoard = () => {
-  const board = Array(5).fill(null).map(() => Array(5).fill(null))
+const generateBoard = (): BingoBoard => {
+  const board: BingoBoard = Array(5).fill(null).map(() => Array(5).fill(null))
   for (let col = 0; col < 5; col++) {
     const [min, max] = NUMBER_RANGES[col]
     const availableNumbers = Array.from({ length: max - min + 1 }, (_, index) => min + index)
@@ -60,7 +67,7 @@ const generateBoard = () => {
   return board
 }
 
-const checkWin = (board: any[][]) => {
+const checkWin = (board: BingoBoard): boolean => {
   // Verificar filas
   for (let row = 0; row < 5; row++) {
     if (board.every(column => column[row].marked)) return true;
@@ -80,17 +87,17 @@ const checkWin = (board: any[][]) => {
   return false;
 }
 
-const saveGameState = (state: any) => {
+const saveGameState = (state: Record<string, unknown>): void => {
   localStorage.setItem('bingoGameState', JSON.stringify(state))
 }
 
-const loadGameState = () => {
+const loadGameState = (): Record<string, unknown> | null => {
   const savedState = localStorage.getItem('bingoGameState')
   return savedState ? JSON.parse(savedState) : null
 }
 
 export default function BingoGame() {
-  const [playerBoards, setPlayerBoards] = useState<any[][][]>([])
+  const [playerBoards, setPlayerBoards] = useState<BingoBoard[]>([])
   const [currentNumber, setCurrentNumber] = useState<{ letter: string, number: number } | null>(null)
   const [winner, setWinner] = useState<string | null>(null)
   const [scores, setScores] = useState<Record<string, number>>({})
@@ -107,82 +114,6 @@ export default function BingoGame() {
   const [numbersCalled, setNumbersCalled] = useState(0)
 
   const drawNumberRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    const handleKeyPress = (event: KeyboardEvent) => {
-      if (event.key === 'n' && !winner && gameStarted) {
-        event.preventDefault()
-        drawNumber()
-      } else if (event.key === 'r' && winner) {
-        event.preventDefault()
-        startNewRound()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyPress)
-    return () => {
-      window.removeEventListener('keydown', handleKeyPress)
-    }
-  }, [winner, gameStarted])
-
-  useEffect(() => {
-    const savedState = loadGameState()
-    if (savedState) {
-      setPlayerBoards(savedState.playerBoards || [])
-      setCurrentNumber(savedState.currentNumber || null)
-      setWinner(savedState.winner || null)
-      setScores(savedState.scores || {})
-      setNumBoards(savedState.numBoards || 50)
-      setSelectedBoards(savedState.selectedBoards || [])
-      setGameStarted(savedState.gameStarted || false)
-      setRound(savedState.round || 1)
-      setGameStats(savedState.gameStats || initialGameStats)
-      setDrawnNumbers(savedState.drawnNumbers || [])
-      setGameStartTime(savedState.gameStartTime || null)
-      setAvailableNumbers(savedState.availableNumbers || [])
-      setNumbersCalled(savedState.numbersCalled || 0)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (gameStarted) {
-      const newPlayerBoards = Array(numBoards).fill(null).map(() => generateBoard())
-      setPlayerBoards(newPlayerBoards)
-      setScores(prevScores => {
-        const newScores = { ...prevScores }
-        for (let i = 1; i <= numBoards; i++) {
-          if (!newScores[`carton${i}`]) newScores[`carton${i}`] = 0
-        }
-        return newScores
-      })
-      setDrawnNumbers([])
-      setGameStartTime(Date.now())
-      setAvailableNumbers(NUMBER_RANGES.map(([min, max]) => 
-        Array.from({ length: max - min + 1 }, (_, index) => min + index)
-      ))
-      setNumbersCalled(0)
-    }
-  }, [numBoards, gameStarted])
-
-  useEffect(() => {
-    if (gameStarted) {
-      saveGameState({
-        playerBoards,
-        currentNumber,
-        winner,
-        scores,
-        numBoards,
-        selectedBoards,
-        gameStarted,
-        round,
-        gameStats,
-        drawnNumbers,
-        gameStartTime,
-        availableNumbers,
-        numbersCalled
-      })
-    }
-  }, [playerBoards, currentNumber, winner, scores, numBoards, selectedBoards, gameStarted, round, gameStats, drawnNumbers, gameStartTime, availableNumbers, numbersCalled])
 
   const playSound = useCallback((soundName: string) => {
     if (soundEnabled) {
@@ -267,9 +198,9 @@ export default function BingoGame() {
 
       return updatedBoards
     })
-  }, [winner, availableNumbers, drawnNumbers, gameStartTime, numbersCalled, playSound])
+  }, [winner, availableNumbers, gameStartTime, numbersCalled, playSound])
 
-  const startNewRound = () => {
+  const startNewRound = useCallback(() => {
     setPlayerBoards(Array(numBoards).fill(null).map(() => generateBoard()))
     setCurrentNumber(null)
     setWinner(null)
@@ -281,7 +212,83 @@ export default function BingoGame() {
     ))
     setNumbersCalled(0)
     playSound('new-round')
-  }
+  }, [numBoards, playSound])
+
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.key === 'n' && !winner && gameStarted) {
+        event.preventDefault()
+        drawNumber()
+      } else if (event.key === 'r' && winner) {
+        event.preventDefault()
+        startNewRound()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress)
+    }
+  }, [winner, gameStarted, drawNumber, startNewRound])
+
+  useEffect(() => {
+    const savedState = loadGameState()
+    if (savedState) {
+      setPlayerBoards(savedState.playerBoards as BingoBoard[] || [])
+      setCurrentNumber(savedState.currentNumber as { letter: string, number: number } | null || null)
+      setWinner(savedState.winner as string | null || null)
+      setScores(savedState.scores as Record<string, number> || {})
+      setNumBoards(savedState.numBoards as number || 50)
+      setSelectedBoards(savedState.selectedBoards as number[] || [])
+      setGameStarted(savedState.gameStarted as boolean || false)
+      setRound(savedState.round as number || 1)
+      setGameStats(savedState.gameStats as GameStats || initialGameStats)
+      setDrawnNumbers(savedState.drawnNumbers as { letter: string, number: number }[] || [])
+      setGameStartTime(savedState.gameStartTime as number | null || null)
+      setAvailableNumbers(savedState.availableNumbers as number[][] || [])
+      setNumbersCalled(savedState.numbersCalled as number || 0)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (gameStarted) {
+      const newPlayerBoards = Array(numBoards).fill(null).map(() => generateBoard())
+      setPlayerBoards(newPlayerBoards)
+      setScores(prevScores => {
+        const newScores = { ...prevScores }
+        for (let i = 1; i <= numBoards; i++) {
+          if (!newScores[`carton${i}`]) newScores[`carton${i}`] = 0
+        }
+        return newScores
+      })
+      setDrawnNumbers([])
+      setGameStartTime(Date.now())
+      setAvailableNumbers(NUMBER_RANGES.map(([min, max]) => 
+        Array.from({ length: max - min + 1 }, (_, index) => min + index)
+      ))
+      setNumbersCalled(0)
+    }
+  }, [numBoards, gameStarted])
+
+  useEffect(() => {
+    if (gameStarted) {
+      saveGameState({
+        playerBoards,
+        currentNumber,
+        winner,
+        scores,
+        numBoards,
+        selectedBoards,
+        gameStarted,
+        round,
+        gameStats,
+        drawnNumbers,
+        gameStartTime,
+        availableNumbers,
+        numbersCalled
+      })
+    }
+  }, [playerBoards, currentNumber, winner, scores, numBoards, selectedBoards, gameStarted, round, gameStats, drawnNumbers, gameStartTime, availableNumbers, numbersCalled])
 
   const resetGame = () => {
     setPlayerBoards([])
@@ -301,7 +308,7 @@ export default function BingoGame() {
     playSound('game-reset')
   }
 
-  const renderBoard = (board: any[][], index: number) => (
+  const renderBoard = (board: BingoBoard, index: number) => (
     <Card key={index} className="w-full">
       <CardHeader>
         <CardTitle className="text-center">
@@ -310,25 +317,27 @@ export default function BingoGame() {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-5 gap-1" role="table" aria-label={`Cartón de Bingo ${index + 1}`}>
-          {BINGO_LETTERS.map((letter, letterIndex) => (
+          {BINGO_LETTERS.map((letter) => (
             <div key={letter} className="text-center font-bold" role="columnheader">{letter}</div>
           ))}
           {Array.from({ length: 5 }).map((_, rowIndex) => (
-            board.map((column, colIndex) => (
-              <motion.div
-                key={`${colIndex}-${rowIndex}`}
-                className={`aspect-square flex items-center justify-center border-2 rounded-md text-sm font-bold
-                  ${column[rowIndex].marked ? 'bg-green-500 text-white' : 'bg-white text-gray-800'}
-                  ${selectedBoards.includes(index + 1) ? 'border-blue-500' : ''}`}
-                initial={{ scale: 1 }}
-                animate={{ scale: column[rowIndex].marked ? [1, 1.1, 1] : 1 }}
-                transition={{ duration: 0.3 }}
-                role="cell"
-                aria-label={`${BINGO_LETTERS[colIndex]}${column[rowIndex].number}, ${column[rowIndex].marked ? 'marcado' : 'no marcado'}`}
-              >
-                {column[rowIndex].number}
-              </motion.div>
-            ))
+            <React.Fragment key={rowIndex}>
+              {board.map((column, colIndex) => (
+                <motion.div
+                  key={`${colIndex}-${rowIndex}`}
+                  className={`aspect-square flex items-center justify-center border-2 rounded-md text-sm font-bold
+                    ${column[rowIndex].marked ? 'bg-green-500 text-white' : 'bg-white text-gray-800'}
+                    ${selectedBoards.includes(index + 1) ? 'border-blue-500' : ''}`}
+                  initial={{ scale: 1 }}
+                  animate={{ scale: column[rowIndex].marked ? [1, 1.1, 1] : 1 }}
+                  transition={{ duration: 0.3 }}
+                  role="cell"
+                  aria-label={`${BINGO_LETTERS[colIndex]}${column[rowIndex].number}, ${column[rowIndex].marked ? 'marcado' : 'no marcado'}`}
+                >
+                  {column[rowIndex].number}
+                </motion.div>
+              ))}
+            </React.Fragment>
           ))}
         </div>
       </CardContent>
@@ -343,7 +352,7 @@ export default function BingoGame() {
       <CardContent>
         <div className="grid grid-cols-5 gap-2">
           {BINGO_LETTERS.map(letter => 
-            <div key={letter} className="text-center font-bold">{letter}</div>
+            <div key={letter} className="text-center  font-bold">{letter}</div>
           )}
           {BINGO_LETTERS.map(letter => {
             const numbersForLetter = drawnNumbers
