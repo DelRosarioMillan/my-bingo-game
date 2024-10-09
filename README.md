@@ -1,2 +1,0 @@
-# my-bingo-game
-Prueba
