@@ -89,7 +89,3 @@ TSU. Del Rosario Johnangel
 ---
 
 This README and the associated project are copyright © 2024 TSU. Del Rosario Johnangel. All rights reserved.
-
-```
-
-```
