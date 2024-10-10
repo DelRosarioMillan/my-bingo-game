@@ -10,34 +10,13 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ChevronDown, ChevronUp, Volume2, VolumeX } from 'lucide-react'
+import { ChevronDown, ChevronUp, Volume2, VolumeX, CheckCircle2 } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import confetti from 'canvas-confetti'
+import { themes } from '@/components/themes/themes'
+import { GameStats, BingoBoard, GameTheme } from '@/components/types/types'
+import { BINGO_LETTERS, checkWin, generateBoard, NUMBER_RANGES, loadGameState, saveGameState } from '@/components/utils/utils'
 
-const BINGO_LETTERS = ['B', 'I', 'N', 'G', 'O']
-const NUMBER_RANGES = [
-  [1, 15],
-  [16, 30],
-  [31, 45],
-  [46, 60],
-  [61, 75]
-] as const
-
-type GameStats = {
-  totalGames: number
-  wins: number
-  fastestWin: number | null
-  averageWinTime: number | null
-  longestGame: number
-  shortestGame: number
-  totalNumbersCalled: number
-}
-
-type BingoCell = {
-  number: number | 'FREE'
-  marked: boolean
-}
-
-type BingoBoard = BingoCell[][]
 
 const initialGameStats: GameStats = {
   totalGames: 0,
@@ -49,59 +28,12 @@ const initialGameStats: GameStats = {
   totalNumbersCalled: 0
 }
 
-const generateBoard = (): BingoBoard => {
-  const board: BingoBoard = Array(5).fill(null).map(() => Array(5).fill(null))
-  for (let col = 0; col < 5; col++) {
-    const [min, max] = NUMBER_RANGES[col]
-    const availableNumbers = Array.from({ length: max - min + 1 }, (_, index) => min + index)
-    for (let row = 0; row < 5; row++) {
-      if (col === 2 && row === 2) {
-        board[col][row] = { number: 'FREE', marked: true }
-      } else {
-        const randomIndex = Math.floor(Math.random() * availableNumbers.length)
-        const number = availableNumbers.splice(randomIndex, 1)[0]
-        board[col][row] = { number, marked: false }
-      }
-    }
-  }
-  return board
-}
-
-const checkWin = (board: BingoBoard): boolean => {
-  // Verificar filas
-  for (let row = 0; row < 5; row++) {
-    if (board.every(column => column[row].marked)) return true;
-  }
-
-  // Verificar columnas
-  for (let col = 0; col < 5; col++) {
-    if (board[col].every(cell => cell.marked)) return true;
-  }
-
-  // Verificar diagonal principal
-  if (board.every((column, index) => column[index].marked)) return true;
-
-  // Verificar diagonal secundaria
-  if (board.every((column, index) => column[4 - index].marked)) return true;
-
-  return false;
-}
-
-const saveGameState = (state: Record<string, unknown>): void => {
-  localStorage.setItem('bingoGameState', JSON.stringify(state))
-}
-
-const loadGameState = (): Record<string, unknown> | null => {
-  const savedState = localStorage.getItem('bingoGameState')
-  return savedState ? JSON.parse(savedState) : null
-}
-
 export default function BingoGame() {
   const [playerBoards, setPlayerBoards] = useState<BingoBoard[]>([])
   const [currentNumber, setCurrentNumber] = useState<{ letter: string, number: number } | null>(null)
   const [winner, setWinner] = useState<string | null>(null)
   const [scores, setScores] = useState<Record<string, number>>({})
-  const [numBoards, setNumBoards] = useState(50)
+  const [numBoards, setNumBoards] = useState(10)
   const [selectedBoards, setSelectedBoards] = useState<number[]>([])
   const [gameStarted, setGameStarted] = useState(false)
   const [round, setRound] = useState(1)
@@ -112,6 +44,14 @@ export default function BingoGame() {
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [availableNumbers, setAvailableNumbers] = useState<number[][]>([])
   const [numbersCalled, setNumbersCalled] = useState(0)
+  const [gameTheme, setGameTheme] = useState<GameTheme>(themes.default)
+  
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('bingoTheme')
+    if (savedTheme) {
+      setGameTheme(JSON.parse(savedTheme))
+    }
+  }, [])
 
   const drawNumberRef = useRef<HTMLButtonElement>(null)
 
@@ -238,7 +178,7 @@ export default function BingoGame() {
       setCurrentNumber(savedState.currentNumber as { letter: string, number: number } | null || null)
       setWinner(savedState.winner as string | null || null)
       setScores(savedState.scores as Record<string, number> || {})
-      setNumBoards(savedState.numBoards as number || 50)
+      setNumBoards(savedState.numBoards  as number || 10)
       setSelectedBoards(savedState.selectedBoards as number[] || [])
       setGameStarted(savedState.gameStarted as boolean || false)
       setRound(savedState.round as number || 1)
@@ -247,6 +187,7 @@ export default function BingoGame() {
       setGameStartTime(savedState.gameStartTime as number | null || null)
       setAvailableNumbers(savedState.availableNumbers as number[][] || [])
       setNumbersCalled(savedState.numbersCalled as number || 0)
+      setGameTheme(savedState.gameTheme as GameTheme || themes.default)
     }
   }, [])
 
@@ -285,10 +226,11 @@ export default function BingoGame() {
         drawnNumbers,
         gameStartTime,
         availableNumbers,
-        numbersCalled
+        numbersCalled,
+        gameTheme
       })
     }
-  }, [playerBoards, currentNumber, winner, scores, numBoards, selectedBoards, gameStarted, round, gameStats, drawnNumbers, gameStartTime, availableNumbers, numbersCalled])
+  }, [playerBoards, currentNumber, winner, scores, numBoards, selectedBoards, gameStarted, round, gameStats, drawnNumbers, gameStartTime, availableNumbers, numbersCalled, gameTheme])
 
   const resetGame = () => {
     setPlayerBoards([])
@@ -309,16 +251,30 @@ export default function BingoGame() {
   }
 
   const renderBoard = (board: BingoBoard, index: number) => (
-    <Card key={index} className="w-full">
+    <Card 
+      key={index} 
+      className={`w-full ${gameTheme.secondaryColor} ${
+        selectedBoards.includes(index + 1) 
+          ? `${gameTheme.selectedBorderColor} border-4` 
+          : `${gameTheme.borderColor} border-2`
+      }`}
+    >
       <CardHeader>
-        <CardTitle className="text-center">
+        <CardTitle className={`text-center ${
+          selectedBoards.includes(index + 1) 
+            ? gameTheme.selectedTextColor 
+            : gameTheme.textColor
+        } flex items-center justify-center`}>
+          {selectedBoards.includes(index + 1) && (
+            <CheckCircle2 className="w-5 h-5 mr-2" />
+          )}
           Cartón {index + 1}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-5 gap-1" role="table" aria-label={`Cartón de Bingo ${index + 1}`}>
           {BINGO_LETTERS.map((letter) => (
-            <div key={letter} className="text-center font-bold" role="columnheader">{letter}</div>
+            <div key={letter} className={`text-center font-bold ${gameTheme.textColor}`} role="columnheader">{letter}</div>
           ))}
           {Array.from({ length: 5 }).map((_, rowIndex) => (
             <React.Fragment key={rowIndex}>
@@ -326,8 +282,9 @@ export default function BingoGame() {
                 <motion.div
                   key={`${colIndex}-${rowIndex}`}
                   className={`aspect-square flex items-center justify-center border-2 rounded-md text-sm font-bold
-                    ${column[rowIndex].marked ? 'bg-green-500 text-white' : 'bg-white text-gray-800'}
-                    ${selectedBoards.includes(index + 1) ? 'border-blue-500' : ''}`}
+                    ${column[rowIndex].marked ? gameTheme.accentColor : gameTheme.cellBgColor}
+                    ${column[rowIndex].marked ? 'text-white' : gameTheme.cellTextColor}
+                    ${selectedBoards.includes(index + 1) ? `${gameTheme.selectedBorderColor} border-2` : `${gameTheme.borderColor} border`}`}
                   initial={{ scale: 1 }}
                   animate={{ scale: column[rowIndex].marked ? [1, 1.1, 1] : 1 }}
                   transition={{ duration: 0.3 }}
@@ -345,14 +302,14 @@ export default function BingoGame() {
   )
 
   const renderDrawnNumbers = () => (
-    <Card>
+    <Card className={`${gameTheme.secondaryColor} ${gameTheme.borderColor} border-2`}>
       <CardHeader>
-        <CardTitle>Números Sacados</CardTitle>
+        <CardTitle className={gameTheme.textColor}>Números Sacados</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-5 gap-2">
           {BINGO_LETTERS.map(letter => 
-            <div key={letter} className="text-center  font-bold">{letter}</div>
+            <div key={letter} className={`text-center font-bold ${gameTheme.textColor}`}>{letter}</div>
           )}
           {BINGO_LETTERS.map(letter => {
             const numbersForLetter = drawnNumbers
@@ -366,7 +323,7 @@ export default function BingoGame() {
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: index * 0.1 }}
-                    className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold"
+                    className={`w-10 h-10 rounded-full ${gameTheme.primaryColor} text-white flex items-center justify-center font-bold`}
                   >
                     {dn.number}
                   </motion.div>
@@ -380,34 +337,34 @@ export default function BingoGame() {
   )
 
   return (
-    <div className="container mx-auto p-4 min-h-screen bg-gray-100">
-      <h1 className="text-4xl font-bold mb-8 text-center text-primary">Juego de Bingo</h1>
+    <div className={`container mx-auto p-4 min-h-screen ${gameTheme.secondaryColor}`}>
+      <h1 className={`text-4xl font-bold mb-8 text-center ${gameTheme.textColor}`}>Juego de Bingo</h1>
       {!gameStarted ? (
-        <Card className="max-w-md mx-auto">
+        <Card className={`max-w-md mx-auto ${gameTheme.primaryColor} ${gameTheme.borderColor} border-2`}>
           <CardHeader>
-            <CardTitle>Configuración del Juego</CardTitle>
+            <CardTitle className="text-white">Configuración del Juego</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="numBoards">Número de Cartones (1-500):</Label>
+                <Label htmlFor="numBoards" className="text-white">Número de Cartones (10-100):</Label>
                 <Slider
                   id="numBoards"
-                  min={1}
-                  max={500}
+                  min={10}
+                  max={100}
                   step={1}
                   value={[numBoards]}
                   onValueChange={(value) => setNumBoards(value[0])}
                   className="mt-2"
-                  aria-valuemin={1}
-                  aria-valuemax={500}
+                  aria-valuemin={10}
+                  aria-valuemax={100}
                   aria-valuenow={numBoards}
                   aria-valuetext={`${numBoards} cartones`}
                 />
-                <p className="text-center mt-2" aria-live="polite">{numBoards} Cartones</p>
+                <p className="text-center mt-2 text-white" aria-live="polite">{numBoards} Cartones</p>
               </div>
               <div>
-                <Label id="board-selection">Selecciona tus cartones:</Label>
+                <Label id="board-selection" className="text-white">Selecciona tus cartones:</Label>
                 <ScrollArea className="h-[200px] mt-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2" role="group" aria-labelledby="board-selection">
                     {Array.from({ length: numBoards }, (_, i) => i + 1).map((boardNum) => (
@@ -424,15 +381,35 @@ export default function BingoGame() {
                           }}
                           aria-label={`Seleccionar Cartón ${boardNum}`}
                         />
-                        <Label htmlFor={`board-${boardNum}`} className="text-sm">Cartón {boardNum}</Label>
+                        <Label htmlFor={`board-${boardNum}`} className="text-sm text-white">Cartón {boardNum}</Label>
                       </div>
                     ))}
                   </div>
                 </ScrollArea>
               </div>
+              <div>
+                <Label htmlFor="theme-select" className="text-white">Tema del juego:</Label>
+                <Select
+                  onValueChange={(value) => {
+                    setGameTheme(themes[value as keyof typeof themes])
+                  }}
+                >
+                  <SelectTrigger id="theme-select" className="w-full mt-2">
+                    <SelectValue placeholder="Selecciona un tema" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Predeterminado</SelectItem>
+                    <SelectItem value="dark">Oscuro</SelectItem>
+                    <SelectItem value="nature">Naturaleza</SelectItem>
+                    <SelectItem value="pink">Rosa</SelectItem>
+                    <SelectItem value="ocean">Océano</SelectItem>
+                    <SelectItem value="autumn">Otoño</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <Button
                 onClick={() => setGameStarted(true)}
-                className="w-full"
+                className={`w-full ${gameTheme.accentColor} text-white`}
                 disabled={selectedBoards.length === 0}
                 aria-disabled={selectedBoards.length === 0}
               >
@@ -451,6 +428,7 @@ export default function BingoGame() {
                 size="lg"
                 ref={drawNumberRef}
                 aria-label="Sacar Número (Tecla N)"
+                className={gameTheme.primaryColor}
               >
                 Sacar Número (N)
               </Button>
@@ -463,7 +441,7 @@ export default function BingoGame() {
                     exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.5 }}
                   >
-                    <Badge variant="secondary" className="text-2xl px-4 py-2">
+                    <Badge variant="secondary" className={`text-2xl px-4 py-2 ${gameTheme.accentColor} text-white`}>
                       {currentNumber.letter}-{currentNumber.number}
                     </Badge>
                   </motion.div>
@@ -476,6 +454,7 @@ export default function BingoGame() {
                 disabled={!winner}
                 size="lg"
                 aria-label="Nueva Ronda (Tecla R)"
+                className={gameTheme.primaryColor}
               >
                 Nueva Ronda (R)
               </Button>
@@ -497,7 +476,7 @@ export default function BingoGame() {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
-              className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded"
+              className={`${gameTheme.accentColor} border-l-4 border-yellow-500 text-white p-4 rounded`}
               role="alert"
               aria-live="assertive"
             >
@@ -505,13 +484,13 @@ export default function BingoGame() {
             </motion.div>
           )}
           <Tabs defaultValue="game" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="game">Juego</TabsTrigger>
-              <TabsTrigger value="drawn-numbers">Números Sacados</TabsTrigger>
-              <TabsTrigger value="stats">Estadísticas</TabsTrigger>
+            <TabsList className={`grid w-full grid-cols-3 ${gameTheme.primaryColor}`}>
+              <TabsTrigger value="game" className="text-white">Juego</TabsTrigger>
+              <TabsTrigger value="drawn-numbers" className="text-white">Números Sacados</TabsTrigger>
+              <TabsTrigger value="stats" className="text-white">Estadísticas</TabsTrigger>
             </TabsList>
             <TabsContent value="game">
-              <Card>
+              <Card className={`${gameTheme.secondaryColor} ${gameTheme.borderColor} border-2`}>
                 <CardHeader
                   className="cursor-pointer"
                   onClick={() => setShowScores(!showScores)}
@@ -526,8 +505,8 @@ export default function BingoGame() {
                   }}
                 >
                   <div className="flex justify-between items-center">
-                    <CardTitle>Puntuaciones (Ronda {round})</CardTitle>
-                    {showScores ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                    <CardTitle className={gameTheme.textColor}>Puntuaciones (Ronda {round})</CardTitle>
+                    {showScores ? <ChevronUp size={24} className={gameTheme.textColor} /> : <ChevronDown size={24} className={gameTheme.textColor} />}
                   </div>
                 </CardHeader>
                 <AnimatePresence>
@@ -542,7 +521,7 @@ export default function BingoGame() {
                       <CardContent>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                           {Object.entries(scores).map(([key, value]) => (
-                            <Badge key={key} variant="outline" className="text-sm p-2">
+                            <Badge key={key} variant="outline" className={`text-sm p-2 ${gameTheme.textColor}`}>
                               {key.replace('carton', 'Cartón ')}: {value || 0}
                             </Badge>
                           ))}
@@ -560,25 +539,25 @@ export default function BingoGame() {
               {renderDrawnNumbers()}
             </TabsContent>
             <TabsContent value="stats">
-              <Card>
+              <Card className={`${gameTheme.secondaryColor} ${gameTheme.borderColor} border-2`}>
                 <CardHeader>
-                  <CardTitle>Estadísticas del Juego</CardTitle>
+                  <CardTitle className={gameTheme.textColor}>Estadísticas del Juego</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <p className="font-semibold">Total de juegos: {gameStats.totalGames}</p>
-                      <p className="font-semibold">Victorias: {gameStats.wins}</p>
+                      <p className={`font-semibold ${gameTheme.textColor}`}>Total de juegos: {gameStats.totalGames}</p>
+                      <p className={`font-semibold ${gameTheme.textColor}`}>Victorias: {gameStats.wins}</p>
                     </div>
                     <div>
-                      <p className="font-semibold">
+                      <p className={`font-semibold ${gameTheme.textColor}`}>
                         Victoria más rápida: {
                           gameStats.fastestWin !== null
                             ? `${gameStats.fastestWin.toFixed(2)} segundos`
                             : 'N/A'
                         }
                       </p>
-                      <p className="font-semibold">
+                      <p className={`font-semibold ${gameTheme.textColor}`}>
                         Tiempo promedio de victoria: {
                           gameStats.averageWinTime !== null
                             ? `${gameStats.averageWinTime.toFixed(2)} segundos`
@@ -587,11 +566,11 @@ export default function BingoGame() {
                       </p>
                     </div>
                     <div>
-                      <p className="font-semibold">Juego más largo: {gameStats.longestGame} números llamados</p>
-                      <p className="font-semibold">Juego más corto: {gameStats.shortestGame === Infinity ? 'N/A' : `${gameStats.shortestGame} números llamados`}</p>
+                      <p className={`font-semibold ${gameTheme.textColor}`}>Juego más largo: {gameStats.longestGame} números llamados</p>
+                      <p className={`font-semibold ${gameTheme.textColor}`}>Juego más corto: {gameStats.shortestGame === Infinity ? 'N/A' : `${gameStats.shortestGame} números llamados`}</p>
                     </div>
                     <div>
-                      <p className="font-semibold">Promedio de números llamados por juego: {
+                      <p className={`font-semibold ${gameTheme.textColor}`}>Promedio de números llamados por juego: {
                         gameStats.totalGames > 0
                           ? (gameStats.totalNumbersCalled / gameStats.totalGames).toFixed(2)
                           : 'N/A'
@@ -604,7 +583,7 @@ export default function BingoGame() {
           </Tabs>
         </div>
       )}
-      <div className="mt-8 text-center text-sm text-gray-600">
+      <div className={`mt-8 text-center text-sm ${gameTheme.textColor}`}>
         <p>Atajos de teclado: N - Sacar Número, R - Nueva Ronda (cuando hay un ganador)</p>
       </div>
     </div>
